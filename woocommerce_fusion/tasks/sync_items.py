@@ -345,6 +345,15 @@ class SynchroniseItem(SynchroniseWooCommerce):
 				# Check if parent exists
 				parent_item = frappe.get_doc("Item", item.item.variant_of)
 				parent_item, parent_wc_product = run_item_sync(item_code=parent_item.item_code)
+
+				# Reload item to check if it was updated during parent sync
+				item.item.reload()
+				if item.item_woocommerce_server.woocommerce_id:
+					wc_products = get_list_of_wc_products(item=item)
+					if wc_products:
+						self.woocommerce_product = wc_products[0]
+					return
+
 				wc_product.parent_id = parent_wc_product.woocommerce_id
 				wc_product.type = "variation"
 
