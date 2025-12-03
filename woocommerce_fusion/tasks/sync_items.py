@@ -518,8 +518,11 @@ class SynchroniseItem(SynchroniseWooCommerce):
 					jsonpath_expr = parse(map.woocommerce_field_name)
 					woocommerce_product_field_matches = jsonpath_expr.find(woocommerce_product_dict)
 
-					setattr(item, erpnext_item_field_name[0], woocommerce_product_field_matches[0].value)
-					item_dirty = True
+					# Skip immutable/mandatory fields that should not be overwritten
+					immutable_fields = ['name', 'item_code']
+					if erpnext_item_field_name[0] not in immutable_fields:
+						setattr(item, erpnext_item_field_name[0], woocommerce_product_field_matches[0].value)
+						item_dirty = True
 		return item_dirty, item
 
 	def set_product_fields(
