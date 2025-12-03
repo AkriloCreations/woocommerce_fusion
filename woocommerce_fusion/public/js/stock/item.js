@@ -10,21 +10,15 @@ frappe.ui.form.on('Item', {
 			frm.trigger("sync_item_price");
 		}, __('Actions'));
 
-		// Add context-aware sync button based on item type
+		// Add sync button for all items
+		frm.add_custom_button(__("Sync this Item with WooCommerce"), function () {
+			frm.trigger("sync_item");
+		}, __('Actions'));
+
+		// Add extra button for template items to sync all variants
 		if (frm.doc.has_variants) {
-			// Template item - sync parent + all variants
-			frm.add_custom_button(__("Sync Template + All Variants to WooCommerce"), function () {
-				frm.trigger("sync_template_and_variants");
-			}, __('Actions'));
-		} else if (frm.doc.variant_of) {
-			// Variant item - sync only this variant
-			frm.add_custom_button(__("Sync This Variant to WooCommerce"), function () {
-				frm.trigger("sync_item");
-			}, __('Actions'));
-		} else {
-			// Simple item
-			frm.add_custom_button(__("Sync this Item with WooCommerce"), function () {
-				frm.trigger("sync_item");
+			frm.add_custom_button(__("Sync All Variants"), function () {
+				frm.trigger("sync_all_variants");
 			}, __('Actions'));
 		}
 	},
@@ -107,9 +101,9 @@ frappe.ui.form.on('Item', {
 		});
 	},
 
-	sync_template_and_variants: function (frm) {
-		// Sync template item + all its variants
-		frappe.dom.freeze(__("Syncing Template + All Variants to WooCommerce..."));
+	sync_all_variants: function (frm) {
+		// Sync all variants of this template item
+		frappe.dom.freeze(__("Syncing All Variants to WooCommerce..."));
 		frappe.call({
 			method: "woocommerce_fusion.tasks.sync_items.run_item_sync",
 			args: {
@@ -118,7 +112,7 @@ frappe.ui.form.on('Item', {
 			callback: function (r) {
 				frappe.dom.unfreeze();
 				frappe.show_alert({
-					message: __('Template and all variants synced successfully'),
+					message: __('All variants synced successfully'),
 					indicator: 'green'
 				}, 5);
 				frm.reload_doc();
