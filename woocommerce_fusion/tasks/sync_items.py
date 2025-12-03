@@ -268,7 +268,7 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			item.item.item_name = woocommerce_product.woocommerce_name
 			item_dirty = True
 
-		fields_updated, item.item = self.set_item_fields(item=item.item)
+		fields_updated, _ = self.set_item_fields(item=item.item)
 
 		wc_server = frappe.get_cached_doc("WooCommerce Server", woocommerce_product.woocommerce_server)
 		if wc_server.enable_image_sync:
