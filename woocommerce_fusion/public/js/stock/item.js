@@ -1,5 +1,5 @@
 frappe.ui.form.on('Item', {
-	refresh: function(frm) {
+	refresh: function (frm) {
 		// Add a custom button to sync Item Stock with WooCommerce
 		frm.add_custom_button(__("Sync this Item's Stock Levels to WooCommerce"), function () {
 			frm.trigger("sync_item_stock");
@@ -10,13 +10,26 @@ frappe.ui.form.on('Item', {
 			frm.trigger("sync_item_price");
 		}, __('Actions'));
 
-		// Add a custom button to sync Item with WooCommerce
-		frm.add_custom_button(__("Sync this Item with WooCommerce"), function () {
-			frm.trigger("sync_item");
-		}, __('Actions'));
+		// Add context-aware sync button based on item type
+		if (frm.doc.has_variants) {
+			// Template item - sync parent + all variants
+			frm.add_custom_button(__("Sync Template + All Variants to WooCommerce"), function () {
+				frm.trigger("sync_template_and_variants");
+			}, __('Actions'));
+		} else if (frm.doc.variant_of) {
+			// Variant item - sync only this variant
+			frm.add_custom_button(__("Sync This Variant to WooCommerce"), function () {
+				frm.trigger("sync_item");
+			}, __('Actions'));
+		} else {
+			// Simple item
+			frm.add_custom_button(__("Sync this Item with WooCommerce"), function () {
+				frm.trigger("sync_item");
+			}, __('Actions'));
+		}
 	},
 
-	sync_item_stock: function(frm) {
+	sync_item_stock: function (frm) {
 		// Sync this Item
 		frappe.dom.freeze(__("Sync Item Stock with WooCommerce..."));
 		frappe.call({
@@ -24,11 +37,11 @@ frappe.ui.form.on('Item', {
 			args: {
 				item_code: frm.doc.name
 			},
-			callback: function(r) {
+			callback: function (r) {
 				frappe.dom.unfreeze();
 				frappe.show_alert({
-					message:__('Synchronised stock level to WooCommerce for enabled servers'),
-					indicator:'green'
+					message: __('Synchronised stock level to WooCommerce for enabled servers'),
+					indicator: 'green'
 				}, 5);
 				frm.reload_doc();
 			},
@@ -42,7 +55,7 @@ frappe.ui.form.on('Item', {
 		});
 	},
 
-	sync_item_price: function(frm) {
+	sync_item_price: function (frm) {
 		// Sync this Item's Price
 		frappe.dom.freeze(__("Sync Item Price with WooCommerce..."));
 		frappe.call({
@@ -50,11 +63,11 @@ frappe.ui.form.on('Item', {
 			args: {
 				item_code: frm.doc.name
 			},
-			callback: function(r) {
+			callback: function (r) {
 				frappe.dom.unfreeze();
 				frappe.show_alert({
-					message:__('Synchronised item price to WooCommerce'),
-					indicator:'green'
+					message: __('Synchronised item price to WooCommerce'),
+					indicator: 'green'
 				}, 5);
 				frm.reload_doc();
 			},
@@ -68,7 +81,7 @@ frappe.ui.form.on('Item', {
 		});
 	},
 
-	sync_item: function(frm) {
+	sync_item: function (frm) {
 		// Sync this Item
 		frappe.dom.freeze(__("Sync Item with WooCommerce..."));
 		frappe.call({
@@ -76,11 +89,37 @@ frappe.ui.form.on('Item', {
 			args: {
 				item_code: frm.doc.name
 			},
-			callback: function(r) {
+			callback: function (r) {
 				frappe.dom.unfreeze();
 				frappe.show_alert({
-					message:__('Sync completed successfully'),
-					indicator:'green'
+					message: __('Sync completed successfully'),
+					indicator: 'green'
+				}, 5);
+				frm.reload_doc();
+			},
+			error: (r) => {
+				frappe.dom.unfreeze();
+				frappe.show_alert({
+					message: __('There was an error processing the request. See Error Log.'),
+					indicator: 'red'
+				}, 5);
+			}
+		});
+	},
+
+	sync_template_and_variants: function (frm) {
+		// Sync template item + all its variants
+		frappe.dom.freeze(__("Syncing Template + All Variants to WooCommerce..."));
+		frappe.call({
+			method: "woocommerce_fusion.tasks.sync_items.run_item_sync",
+			args: {
+				item_code: frm.doc.name
+			},
+			callback: function (r) {
+				frappe.dom.unfreeze();
+				frappe.show_alert({
+					message: __('Template and all variants synced successfully'),
+					indicator: 'green'
 				}, 5);
 				frm.reload_doc();
 			},
@@ -96,9 +135,9 @@ frappe.ui.form.on('Item', {
 })
 
 frappe.ui.form.on('Item WooCommerce Server', {
-	view_product: function(frm, cdt, cdn) {
+	view_product: function (frm, cdt, cdn) {
 		let current_row_doc = locals[cdt][cdn];
 		console.log(current_row_doc);
-		frappe.set_route("Form", "WooCommerce Product", `${current_row_doc.woocommerce_server}~${current_row_doc.woocommerce_id}` );
+		frappe.set_route("Form", "WooCommerce Product", `${current_row_doc.woocommerce_server}~${current_row_doc.woocommerce_id}`);
 	}
 })
