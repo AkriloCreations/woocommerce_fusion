@@ -111,6 +111,23 @@ class WooCommerceProduct(WooCommerceResource):
 	def before_db_insert(self, product: Dict):
 		return self.clean_up_product_before_write(product)
 
+	def validate(self):
+		# Set default values to avoid MandatoryError
+		if not self.regular_price:
+			self.regular_price = 0
+		if not self.weight:
+			self.weight = 0
+		
+		# Serialize JSON fields that might be Python lists/dicts
+		json_fields = ['upsell_ids', 'cross_sell_ids', 'related_ids', 'categories', 
+					   'tags', 'images', 'attributes', 'default_attributes', 
+					   'variations', 'meta_data', 'dimensions']
+		for field in json_fields:
+			val = getattr(self, field, None)
+			if val is not None and not isinstance(val, str):
+				import json as json_module
+				setattr(self, field, json_module.dumps(val))
+
 	def before_db_update(self, product: Dict):
 		return self.clean_up_product_before_write(product)
 
@@ -124,8 +141,9 @@ class WooCommerceProduct(WooCommerceResource):
 		"""
 
 		# Convert back to string
-		product["weight"] = str(product["weight"])
-		product["regular_price"] = str(product["regular_price"])
+		product["weight"] = str(product["weight"] or 0)
+		# Variable products don't have regular_price, default to 0
+		product["regular_price"] = str(product["regular_price"] or 0)
 
 		# Do not post Sale Price if it is 0
 		if product["sale_price"] and float(product["sale_price"]) > 0:

@@ -191,10 +191,16 @@ class SynchroniseItem(SynchroniseWooCommerce):
 
 			wc_products = get_list_of_wc_products(item=self.item)
 			if len(wc_products) == 0:
-				raise ValueError(
-					f"No WooCommerce Product found with ID {self.item.item_woocommerce_server.woocommerce_id} on {self.item.item_woocommerce_server.woocommerce_server}"
+				# Product not found on WooCommerce - clear broken link
+				frappe.log_error(
+					title="WooCommerce Sync Warning",
+					message=f"WooCommerce Product ID {self.item.item_woocommerce_server.woocommerce_id} not found on {self.item.item_woocommerce_server.woocommerce_server}. Clearing broken link."
 				)
-			self.woocommerce_product = wc_products[0]
+				self.item.item_woocommerce_server.woocommerce_id = None
+				self.item.item_woocommerce_server.save()
+				# Proceed to allow creation of new product
+			else:
+				self.woocommerce_product = wc_products[0]
 
 		if self.woocommerce_product and not self.item:
 			self.get_erpnext_item()
@@ -353,6 +359,11 @@ class SynchroniseItem(SynchroniseWooCommerce):
 					if wc_products:
 						self.woocommerce_product = wc_products[0]
 					return
+
+				if not parent_wc_product.woocommerce_id:
+					raise ValueError(
+						f"Parent item {parent_item.item_code} is not synced to WooCommerce. Cannot sync variant {item.item.item_code}."
+					)
 
 				wc_product.parent_id = parent_wc_product.woocommerce_id
 				wc_product.type = "variation"
