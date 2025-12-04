@@ -189,7 +189,27 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			if not wc_server.enable_sync:
 				raise SyncDisabledError(wc_server)
 
-			wc_products = get_list_of_wc_products(item=self.item)
+			# For variations, we need to use a different endpoint
+			if self.item.item.variant_of:
+				# Get parent's woocommerce_id first
+				parent_item = frappe.get_doc("Item", self.item.item.variant_of)
+				parent_wc_id = None
+				for wc_srv in parent_item.woocommerce_servers:
+					if wc_srv.woocommerce_server == self.item.item_woocommerce_server.woocommerce_server:
+						parent_wc_id = wc_srv.woocommerce_id
+						break
+				
+				if parent_wc_id:
+					# Use variations endpoint
+					wc_products = get_list_of_wc_products(
+						item=self.item,
+						parent_wc_id=parent_wc_id
+					)
+				else:
+					wc_products = []
+			else:
+				wc_products = get_list_of_wc_products(item=self.item)
+			
 			if len(wc_products) == 0:
 				# Product not found on WooCommerce - clear broken link
 				frappe.log_error(
@@ -629,12 +649,15 @@ class SynchroniseItem(SynchroniseWooCommerce):
 
 
 def get_list_of_wc_products(
-	item: Optional[ERPNextItemToSync] = None, date_time_from: Optional[datetime] = None
+	item: Optional[ERPNextItemToSync] = None, 
+	date_time_from: Optional[datetime] = None,
+	parent_wc_id: Optional[int] = None
 ) -> List[WooCommerceProduct]:
 	"""
 	Fetches a list of WooCommerce Products within a specified date range or linked with an Item, using pagination.
 
 	At least one of date_time_from, item parameters are required
+	For variations, parent_wc_id should be provided to use the correct endpoint
 	"""
 	if not any([date_time_from, item]):
 		raise ValueError("At least one of date_time_from or item parameters are required")
@@ -646,27 +669,42 @@ def get_list_of_wc_products(
 	filters = []
 	wc_products = []
 	servers = None
+	endpoint = None
+	target_variation_id = None
 
 	# Build filters
 	if date_time_from:
 		filters.append(["WooCommerce Product", "date_modified", ">", date_time_from])
 	if item:
-		filters.append(["WooCommerce Product", "id", "=", item.item_woocommerce_server.woocommerce_id])
 		servers = [item.item_woocommerce_server.woocommerce_server]
+		# For variations, use the variations endpoint and filter manually
+		if parent_wc_id:
+			endpoint = f"products/{parent_wc_id}/variations"
+			target_variation_id = item.item_woocommerce_server.woocommerce_id
+			# Don't add ID filter for variations - WC API doesn't support it
+		else:
+			filters.append(["WooCommerce Product", "id", "=", item.item_woocommerce_server.woocommerce_id])
 
 	while new_results:
 		woocommerce_product = frappe.get_doc({"doctype": "WooCommerce Product"})
-		new_results = woocommerce_product.get_list(
-			args={
-				"filters": filters,
-				"page_lenth": page_length,
-				"start": start,
-				"servers": servers,
-				"as_doc": True,
-			}
-		)
+		args = {
+			"filters": filters,
+			"page_lenth": page_length,
+			"start": start,
+			"servers": servers,
+			"as_doc": True,
+		}
+		if endpoint:
+			args["endpoint"] = endpoint
+		new_results = woocommerce_product.get_list(args=args)
 		for wc_product in new_results:
-			wc_products.append(wc_product)
+			# For variations, filter by ID manually
+			if target_variation_id:
+				if str(wc_product.woocommerce_id) == str(target_variation_id):
+					wc_products.append(wc_product)
+					return wc_products  # Found it, exit early
+			else:
+				wc_products.append(wc_product)
 		start += page_length
 		if len(new_results) < page_length:
 			new_results = []
