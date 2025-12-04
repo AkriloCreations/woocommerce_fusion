@@ -105,7 +105,7 @@ frappe.ui.form.on('Item', {
 		// Sync all variants of this template item
 		frappe.dom.freeze(__("Syncing All Variants to WooCommerce..."));
 		frappe.call({
-			method: "woocommerce_fusion.tasks.sync_items.run_item_sync",
+			method: "woocommerce_fusion.tasks.sync_items.sync_template_variants",
 			args: {
 				item_code: frm.doc.name
 			},

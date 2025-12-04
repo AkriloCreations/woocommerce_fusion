@@ -697,3 +697,36 @@ def clear_sync_hash_and_run_item_sync(item_code: str):
 
 	if len(iwss) > 0:
 		run_item_sync(item_code=item_code, enqueue=True)
+
+
+@frappe.whitelist()
+def sync_template_variants(item_code: str, enqueue: bool = False):
+	"""
+	Sync a template item and all its variants to WooCommerce
+	"""
+	template_item = frappe.get_doc("Item", item_code)
+
+	if not template_item.has_variants:
+		frappe.throw(_("Item {0} is not a template item").format(item_code))
+
+	# Sync template first
+	run_item_sync(item_code=item_code, enqueue=enqueue)
+
+	# Get all variants
+	variants = frappe.get_all(
+		"Item",
+		filters={"variant_of": item_code},
+		pluck="name"
+	)
+
+	# Sync each variant
+	for variant_code in variants:
+		if enqueue:
+			frappe.enqueue(run_item_sync, item_code=variant_code, enqueue=False)
+		else:
+			run_item_sync(item_code=variant_code, enqueue=False)
+
+	return {
+		"template": item_code,
+		"variants_synced": len(variants)
+	}
