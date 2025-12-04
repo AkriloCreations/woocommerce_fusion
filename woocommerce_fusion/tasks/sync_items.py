@@ -303,6 +303,17 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			wc_product.woocommerce_name = item.item.item_name
 			wc_product_dirty = True
 
+		# Update price
+		new_price = get_item_price_rate(item) or item.item.standard_rate or 0
+		if float(wc_product.regular_price or 0) != float(new_price):
+			wc_product.regular_price = new_price
+			wc_product_dirty = True
+
+		# Update SKU
+		if wc_product.sku != item.item.item_code:
+			wc_product.sku = item.item.item_code
+			wc_product_dirty = True
+
 		product_fields_changed, wc_product = self.set_product_fields(wc_product, item)
 		if product_fields_changed:
 			wc_product_dirty = True
@@ -383,7 +394,9 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			# Set properties
 			wc_product.woocommerce_server = item.item_woocommerce_server.woocommerce_server
 			wc_product.woocommerce_name = item.item.item_name
-			wc_product.regular_price = get_item_price_rate(item) or "0"
+			# Use Item Price if price list sync enabled, else use standard_rate
+			wc_product.regular_price = get_item_price_rate(item) or item.item.standard_rate or "0"
+			wc_product.sku = item.item.item_code
 
 			self.set_product_fields(wc_product, item)
 
@@ -672,7 +685,7 @@ def get_item_price_rate(item: ERPNextItemToSync):
 	if wc_server.enable_price_list_sync:
 		item_prices = frappe.get_all(
 			"Item Price",
-			filters={"item_code": item.item.item_name, "price_list": wc_server.price_list},
+			filters={"item_code": item.item.item_code, "price_list": wc_server.price_list},
 			fields=["price_list_rate", "valid_upto"],
 		)
 		return next(
