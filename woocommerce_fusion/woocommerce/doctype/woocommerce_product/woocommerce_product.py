@@ -4,6 +4,7 @@
 import json
 from dataclasses import dataclass
 from typing import Dict
+import frappe
 
 from woocommerce_fusion.woocommerce.woocommerce_api import WooCommerceAPI, WooCommerceResource
 
@@ -131,7 +132,33 @@ class WooCommerceProduct(WooCommerceResource):
 				setattr(self, field, json_module.dumps(val))
 
 	def delete(self):
-		frappe.throw(_("Delete method not implemented yet"))
+		"""Delete this WooCommerce product or variation via the REST API.
+		For simple products the endpoint is ``products/{id}``.
+		For variations the endpoint is ``products/{parent_id}/variations/{id}``.
+		The method forces deletion (force=true) to bypass trash.
+		"""
+		# Ensure API is initialised
+		if not getattr(self, "current_wc_api", None):
+			self.init_api()
+			if getattr(self, "wc_api_list", None) and len(self.wc_api_list) > 0:
+				self.current_wc_api = self.wc_api_list[0]
+		if not self.current_wc_api:
+			frappe.throw(_("WooCommerce API not initialised"))
+
+		# Determine endpoint based on variation or simple product
+		if getattr(self, "parent_id", None):
+			endpoint = f"products/{self.parent_id}/variations/{self.woocommerce_id}"
+		else:
+			endpoint = f"products/{self.woocommerce_id}"
+
+		# Perform DELETE request with force flag
+		response = self.current_wc_api.api.delete(endpoint, params={"force": True})
+		if response.status_code not in (200, 202, 204):
+			error_text = f"Failed to delete WooCommerce {'variation' if getattr(self, 'parent_id', None) else 'product'} {self.woocommerce_id}."
+			log_and_raise_error(error_text=error_text, response=response)
+		else:
+			frappe.msgprint(_(f"WooCommerce {'variation' if getattr(self, 'parent_id', None) else 'product'} {self.woocommerce_id} deleted successfully."))
+		return response
 
 	def before_db_update(self, product: Dict):
 		return self.clean_up_product_before_write(product)
