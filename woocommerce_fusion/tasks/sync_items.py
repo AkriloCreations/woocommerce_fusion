@@ -211,13 +211,33 @@ class SynchroniseItem(SynchroniseWooCommerce):
 				wc_products = get_list_of_wc_products(item=self.item)
 			
 			if len(wc_products) == 0:
-				# Product not found on WooCommerce - clear broken link
-				frappe.log_error(
-					title="WooCommerce Sync Warning",
-					message=f"WooCommerce Product ID {self.item.item_woocommerce_server.woocommerce_id} not found on {self.item.item_woocommerce_server.woocommerce_server}. Clearing broken link."
-				)
-				self.item.item_woocommerce_server.woocommerce_id = None
-				self.item.item_woocommerce_server.save()
+				# Product not found by ID - for variations, try to find by SKU
+				if self.item.item.variant_of and parent_wc_id:
+					# Search for variation with matching SKU
+					all_variations = get_list_of_wc_products_by_parent(
+						parent_wc_id=parent_wc_id,
+						wc_server=self.item.item_woocommerce_server.woocommerce_server
+					)
+					for var in all_variations:
+						if var.sku == self.item.item.item_code:
+							# Found existing variation with same SKU - link it
+							self.item.item_woocommerce_server.woocommerce_id = var.woocommerce_id
+							self.item.item_woocommerce_server.save()
+							self.woocommerce_product = var
+							frappe.log_error(
+								title="WooCommerce Sync Info",
+								message=f"Found existing variation with SKU {var.sku} (ID: {var.woocommerce_id}). Linked to ERPNext item {self.item.item.item_code}."
+							)
+							return
+				
+				# No match found - clear broken link if there was one
+				if self.item.item_woocommerce_server.woocommerce_id:
+					frappe.log_error(
+						title="WooCommerce Sync Warning",
+						message=f"WooCommerce Product ID {self.item.item_woocommerce_server.woocommerce_id} not found on {self.item.item_woocommerce_server.woocommerce_server}. Clearing broken link."
+					)
+					self.item.item_woocommerce_server.woocommerce_id = None
+					self.item.item_woocommerce_server.save()
 				# Proceed to allow creation of new product
 			else:
 				self.woocommerce_product = wc_products[0]
@@ -705,6 +725,41 @@ def get_list_of_wc_products(
 					return wc_products  # Found it, exit early
 			else:
 				wc_products.append(wc_product)
+		start += page_length
+		if len(new_results) < page_length:
+			new_results = []
+
+	return wc_products
+
+
+def get_list_of_wc_products_by_parent(
+	parent_wc_id: int,
+	wc_server: str
+) -> List[WooCommerceProduct]:
+	"""
+	Fetches all WooCommerce Variations for a given parent product ID.
+	Used to search for variations by SKU when ID lookup fails.
+	"""
+	wc_records_per_page_limit = 100
+	page_length = wc_records_per_page_limit
+	new_results = True
+	start = 0
+	wc_products = []
+	endpoint = f"products/{parent_wc_id}/variations"
+
+	while new_results:
+		woocommerce_product = frappe.get_doc({"doctype": "WooCommerce Product"})
+		args = {
+			"filters": [],
+			"page_lenth": page_length,
+			"start": start,
+			"servers": [wc_server],
+			"as_doc": True,
+			"endpoint": endpoint,
+		}
+		new_results = woocommerce_product.get_list(args=args)
+		for wc_product in new_results:
+			wc_products.append(wc_product)
 		start += page_length
 		if len(new_results) < page_length:
 			new_results = []

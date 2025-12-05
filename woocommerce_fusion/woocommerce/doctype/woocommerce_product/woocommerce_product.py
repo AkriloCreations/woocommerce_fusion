@@ -117,6 +117,8 @@ class WooCommerceProduct(WooCommerceResource):
 			self.regular_price = 0
 		if not self.weight:
 			self.weight = 0
+		if not self.catalog_visibility:
+			self.catalog_visibility = "visible"
 		
 		# Serialize JSON fields that might be Python lists/dicts
 		json_fields = ['upsell_ids', 'cross_sell_ids', 'related_ids', 'categories', 
