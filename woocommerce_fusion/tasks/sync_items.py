@@ -9,6 +9,7 @@ from frappe import ValidationError, _, _dict
 from frappe.query_builder import Criterion
 from frappe.utils import get_datetime, now
 from jsonpath_ng.ext import parse
+import re
 
 from woocommerce_fusion.exceptions import SyncDisabledError
 from woocommerce_fusion.tasks.sync import SynchroniseWooCommerce
@@ -440,7 +441,37 @@ class SynchroniseItem(SynchroniseWooCommerce):
 
 			self.set_product_fields(wc_product, item)
 
-			wc_product.insert()
+			try:
+				wc_product.insert()
+			except Exception as e:
+				# Check for duplicate SKU error and try to recover (Self-Healing)
+				error_message = str(e)
+				# Error format typically: {"code":"product_invalid_sku", ... "resource_id":123 ...}
+				if "product_invalid_sku" in error_message and "resource_id" in error_message:
+					match = re.search(r'"resource_id":\s*(\d+)', error_message)
+					if match:
+						existing_id = match.group(1)
+						frappe.msgprint(
+							_("Found existing WooCommerce product/variation with same SKU (ID: {0}). Linking and updating.").format(existing_id),
+							alert=True
+						)
+						
+						# Link the existing ID to ERPNext Item
+						item.item_woocommerce_server.woocommerce_id = existing_id
+						item.item.flags.created_by_sync = True
+						item.item.save() # Save helper first
+						
+						# Update the in-memory wc_product to act as if it exists
+						wc_product.woocommerce_id = existing_id
+						
+						# Now perform an update (save) instead of insert
+						# We must ensure it treats it as an update. The 'save' method of the virtual doctype
+						# usually triggers PUT if woocommerce_id is present.
+						wc_product.save()
+					else:
+						raise e
+				else:
+					raise e
 			self.woocommerce_product = wc_product
 
 			# Reload ERPNext Item
