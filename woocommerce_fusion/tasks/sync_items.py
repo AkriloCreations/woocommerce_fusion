@@ -463,11 +463,17 @@ class SynchroniseItem(SynchroniseWooCommerce):
 						
 						# Update the in-memory wc_product to act as if it exists
 						wc_product.woocommerce_id = existing_id
+						wc_product.name = generate_woocommerce_record_name_from_domain_and_id(
+							wc_product.woocommerce_server, wc_product.woocommerce_id
+						)
 						
-						# Now perform an update (save) instead of insert
-						# We must ensure it treats it as an update. The 'save' method of the virtual doctype
-						# usually triggers PUT if woocommerce_id is present.
-						wc_product.save()
+						# Now perform an update instead of insert.
+						# We assume all fields in wc_product are "new"/changed relative to the server because
+						# we want to overwrite the server state with our ERPNext state.
+						# We provide an empty _doc_before_save to ensure all fields are detected as changed
+						# and to prevent AttributeError in db_update.
+						wc_product._doc_before_save = frappe.get_doc({"doctype": "WooCommerce Product"})
+						wc_product.db_update()
 					else:
 						raise e
 				else:
@@ -822,12 +828,13 @@ def get_item_price_rate(item: ERPNextItemToSync):
 		)
 
 
-def clear_sync_hash_and_run_item_sync(item_code: str):
+def clear_sync_hash(item_code: str) -> int:
 	"""
 	Clear the last sync hash value using db.set_value, as it does not call the ORM triggers
-	and it does not update the modified timestamp (by using the update_modified parameter)
-	"""
+	and it does not update the modified timestamp (by using the update_modified parameter).
 
+	Returns the number of Item WooCommerce Server rows that were cleared.
+	"""
 	iws = frappe.qb.DocType("Item WooCommerce Server")
 
 	iwss = (
@@ -843,8 +850,17 @@ def clear_sync_hash_and_run_item_sync(item_code: str):
 			update_modified=False,
 		)
 
-	if len(iwss) > 0:
-		run_item_sync(item_code=item_code, enqueue=True)
+	return len(iwss)
+
+
+def clear_sync_hash_and_run_item_sync(item_code: str, enqueue: bool = True):
+	"""
+	Clear the last sync hash value using db.set_value, as it does not call the ORM triggers
+	and it does not update the modified timestamp (by using the update_modified parameter)
+	"""
+	rows_cleared = clear_sync_hash(item_code)
+	if rows_cleared > 0:
+		run_item_sync(item_code=item_code, enqueue=enqueue)
 
 
 @frappe.whitelist()
@@ -856,6 +872,9 @@ def sync_template_variants(item_code: str, enqueue: bool = False):
 
 	if not template_item.has_variants:
 		frappe.throw(_("Item {0} is not a template item").format(item_code))
+
+	# Clear hashes so price and attribute updates are forced through
+	clear_sync_hash(item_code)
 
 	# Sync template first
 	run_item_sync(item_code=item_code, enqueue=enqueue)
@@ -869,6 +888,7 @@ def sync_template_variants(item_code: str, enqueue: bool = False):
 
 	# Sync each variant
 	for variant_code in variants:
+		clear_sync_hash(variant_code)
 		if enqueue:
 			frappe.enqueue(run_item_sync, item_code=variant_code, enqueue=False)
 		else:

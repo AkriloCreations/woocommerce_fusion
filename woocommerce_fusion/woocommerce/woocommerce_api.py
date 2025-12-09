@@ -8,7 +8,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import format_datetime, get_datetime
 
-from woocommerce_fusion.exceptions import SyncDisabledError
+from woocommerce_fusion.exceptions import SyncDisabledError, WooCommerceError
 from woocommerce_fusion.tasks.utils import APIWithRequestLogging
 
 WC_RESOURCE_DELIMITER = "~"
@@ -113,7 +113,13 @@ class WooCommerceResource(Document):
 
 		# Get WooCommerce Record
 		try:
-			record = self.current_wc_api.api.get(f"{self.resource}/{record_id}").json()
+			response = self.current_wc_api.api.get(f"{self.resource}/{record_id}")
+			if response.status_code == 404:
+				# Record not found, treat as missing but allow loading without error
+				frappe.msgprint(_(f"WooCommerce {self.resource} #{record_id} not found (may have been deleted)."))
+				record = {}
+			else:
+				record = response.json()
 		except Exception as err:
 			error_text = (
 				f"load_from_db failed (WooCommerce {self.resource} #{record_id})\n\n{frappe.get_traceback()}"
@@ -121,10 +127,8 @@ class WooCommerceResource(Document):
 			log_and_raise_error(error_text)
 
 		if "id" not in record:
-			log_and_raise_error(
-				error_text=f"load_from_db failed (WooCommerce {self.resource} #{record_id})\nOrder:\n{str(record)}"
-			)
-
+			frappe.msgprint(_(f"WooCommerce {self.resource} #{record_id} not found (may have been deleted)."))
+			return {}
 		record = self.pre_init_document(
 			record, woocommerce_server_url=self.current_wc_api.woocommerce_server_url
 		)
@@ -133,7 +137,7 @@ class WooCommerceResource(Document):
 		self.call_super_init(record)
 
 	def call_super_init(self, record: Dict):
-		super(Document, self).__init__(record)
+		super(WooCommerceResource, self).__init__(record)
 
 	def after_load_from_db(self, record: Dict):
 		return record
@@ -583,14 +587,21 @@ def log_and_raise_error(exception=None, error_text=None, response=None):
 	)
 	log = frappe.log_error("WooCommerce Error", error_message)
 	log_link = frappe.utils.get_link_to_form("Error Log", log.name)
-	frappe.throw(
+	frappe.msgprint(
 		msg=_("Something went wrong while connecting to WooCommerce. See Error Log {0}").format(
 			log_link
 		),
 		title=_("WooCommerce Error"),
+		indicator="red",
 	)
 	if exception:
 		raise exception
+	
+	# Raise custom error with full message to allow upstream handling (e.g. self-healing)
+	if response is not None:
+		raise WooCommerceError(error_message)
+	else:
+		raise WooCommerceError(error_text)
 
 
 def parse_domain_from_url(url: str):

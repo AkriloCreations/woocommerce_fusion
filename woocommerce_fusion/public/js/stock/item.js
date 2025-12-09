@@ -78,8 +78,11 @@ frappe.ui.form.on('Item', {
 	sync_item: function (frm) {
 		// Sync this Item
 		frappe.dom.freeze(__("Sync Item with WooCommerce..."));
+		const method = (frm.doc.has_variants && !frm.doc.variant_of)
+			? "woocommerce_fusion.tasks.sync_items.sync_template_variants"
+			: "woocommerce_fusion.tasks.sync_items.run_item_sync";
 		frappe.call({
-			method: "woocommerce_fusion.tasks.sync_items.run_item_sync",
+			method: method,
 			args: {
 				item_code: frm.doc.name
 			},
