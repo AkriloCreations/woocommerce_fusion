@@ -344,11 +344,40 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			wc_product.woocommerce_name = item.item.item_name
 			wc_product_dirty = True
 
+		# Always keep products published (avoid draft variations)
+		if wc_product.status != "publish":
+			wc_product.status = "publish"
+			wc_product_dirty = True
+
 		# Update price
 		new_price = get_item_price_rate(item) or item.item.standard_rate or 0
 		if float(wc_product.regular_price or 0) != float(new_price):
 			wc_product.regular_price = new_price
 			wc_product_dirty = True
+
+		# If item has variants, ensure parent is variable with attributes defined
+		if item.item.has_variants:
+			if wc_product.type != "variable":
+				wc_product.type = "variable"
+				wc_product_dirty = True
+
+			wc_product_attributes = []
+			for row in item.item.attributes:
+				item_attribute = frappe.get_doc("Item Attribute", row.attribute)
+				wc_product_attributes.append(
+					{
+						"name": row.attribute,
+						"slug": row.attribute.lower().replace(" ", "_"),
+						"visible": True,
+						"variation": True,
+						"options": [option.attribute_value for option in item_attribute.item_attribute_values],
+					}
+				)
+
+			current_attrs = json.loads(wc_product.attributes) if wc_product.attributes else []
+			if current_attrs != wc_product_attributes:
+				wc_product.attributes = json.dumps(wc_product_attributes)
+				wc_product_dirty = True
 
 		# Update SKU
 		if wc_product.sku != item.item.item_code:
@@ -360,7 +389,11 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			wc_product_dirty = True
 
 		if wc_product_dirty:
-			wc_product.save()
+			_truncate_title_and_name(wc_product)
+			# Virtual doctype doesn't always have modified tracking; bypass version check
+			wc_product.flags.ignore_version = True
+			wc_product._original_modified = getattr(wc_product, "modified", "") or ""
+			wc_product.save(ignore_version=True)
 
 		self.woocommerce_product = wc_product
 		self.set_sync_hash()
@@ -439,9 +472,11 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			wc_product.regular_price = get_item_price_rate(item) or item.item.standard_rate or "0"
 			wc_product.sku = item.item.item_code
 
+			_truncate_title_and_name(wc_product)
 			self.set_product_fields(wc_product, item)
 
 			try:
+				wc_product.status = "publish"
 				wc_product.insert()
 			except Exception as e:
 				# Check for duplicate SKU error and try to recover (Self-Healing)
@@ -864,10 +899,20 @@ def clear_sync_hash_and_run_item_sync(item_code: str, enqueue: bool = True):
 
 
 @frappe.whitelist()
-def sync_template_variants(item_code: str, enqueue: bool = False):
+def sync_template_variants(item_code: str, enqueue: bool = False, variant_codes=None):
 	"""
-	Sync a template item and all its variants to WooCommerce
+	Sync a template item and all (or selected) variants to WooCommerce
 	"""
+	# Coerce variant_codes if coming as JSON string
+	if isinstance(variant_codes, str):
+		try:
+			import json
+			_variant_codes = json.loads(variant_codes)
+			if isinstance(_variant_codes, list):
+				variant_codes = _variant_codes
+		except Exception:
+			pass
+
 	template_item = frappe.get_doc("Item", item_code)
 
 	if not template_item.has_variants:
@@ -882,15 +927,28 @@ def sync_template_variants(item_code: str, enqueue: bool = False):
 	else:
 		run_item_sync(item_code=item_code, enqueue=False)
 
-	# Get all variants
-	variants = frappe.get_all(
-		"Item",
-		filters={"variant_of": item_code},
-		pluck="name"
-	)
+	# Get variants (all or filtered)
+	if variant_codes:
+		variants = variant_codes
+	else:
+		variants = frappe.get_all(
+			"Item",
+			filters={"variant_of": item_code},
+			pluck="name"
+		)
 
 	# Sync each variant
 	for variant_code in variants:
+		# Ensure variant has WooCommerce server rows copied from template if missing
+		variant_doc = frappe.get_doc("Item", variant_code)
+		if len(variant_doc.woocommerce_servers) == 0 and len(template_item.woocommerce_servers) > 0:
+			for tmpl_server in template_item.woocommerce_servers:
+				row = variant_doc.append("woocommerce_servers")
+				row.woocommerce_server = tmpl_server.woocommerce_server
+				row.enabled = tmpl_server.enabled
+			variant_doc.flags.ignore_mandatory = True
+			variant_doc.save(ignore_permissions=True)
+
 		clear_sync_hash(variant_code)
 		if enqueue:
 			frappe.enqueue(run_item_sync, item_code=variant_code, enqueue=False)
@@ -901,3 +959,58 @@ def sync_template_variants(item_code: str, enqueue: bool = False):
 		"template": item_code,
 		"variants_synced": len(variants)
 	}
+
+
+def _truncate_title_and_name(wc_product, max_len: int = 140):
+	"""
+	Ensure title and woocommerce_name respect the DocType length (default 140 chars)
+	"""
+	if not wc_product:
+		return wc_product
+
+	base_title = wc_product.title or wc_product.woocommerce_name or wc_product.sku or str(
+		getattr(wc_product, "woocommerce_id", "") or ""
+	)
+	if base_title and len(base_title) > max_len:
+		base_title = base_title[:max_len]
+	wc_product.title = base_title
+
+	if wc_product.woocommerce_name and len(wc_product.woocommerce_name) > max_len:
+		wc_product.woocommerce_name = wc_product.woocommerce_name[:max_len]
+
+	return wc_product
+
+
+@frappe.whitelist()
+def get_variants_with_attributes(template_item_code: str):
+	"""
+	Return variants of a template item along with their attribute names and values.
+	"""
+	template_item = frappe.get_doc("Item", template_item_code)
+	if not template_item.has_variants:
+		return {"variants": []}
+
+	variant_names = frappe.get_all(
+		"Item",
+		filters={"variant_of": template_item_code},
+		pluck="name"
+	)
+
+	variants = []
+	for name in variant_names:
+		attrs = frappe.get_all(
+			"Item Variant Attribute",
+			filters={"parent": name},
+			fields=["attribute", "attribute_value"],
+		)
+		variants.append(
+			{
+				"name": name,
+				"attributes": [a.attribute for a in attrs],
+				"attribute_values": [
+					{"attribute": a.attribute, "value": a.attribute_value} for a in attrs
+				],
+			}
+		)
+
+	return {"variants": variants}
