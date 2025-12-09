@@ -84,14 +84,15 @@ frappe.ui.form.on('Item', {
 		frappe.call({
 			method: method,
 			args: {
-				item_code: frm.doc.name
+				item_code: frm.doc.name,
+				enqueue: true
 			},
 			callback: function (r) {
 				frappe.dom.unfreeze();
-				frappe.show_alert({
-					message: __('Sync completed successfully'),
-					indicator: 'green'
-				}, 5);
+				const msg = method === "woocommerce_fusion.tasks.sync_items.sync_template_variants"
+					? __('Template and variants sync enqueued')
+					: __('Sync completed successfully');
+				frappe.show_alert({ message: msg, indicator: 'green' }, 5);
 				frm.reload_doc();
 			},
 			error: (r) => {
@@ -110,12 +111,13 @@ frappe.ui.form.on('Item', {
 		frappe.call({
 			method: "woocommerce_fusion.tasks.sync_items.sync_template_variants",
 			args: {
-				item_code: frm.doc.name
+				item_code: frm.doc.name,
+				enqueue: true
 			},
 			callback: function (r) {
 				frappe.dom.unfreeze();
 				frappe.show_alert({
-					message: __('All variants synced successfully'),
+					message: __('Template and variants sync enqueued'),
 					indicator: 'green'
 				}, 5);
 				frm.reload_doc();

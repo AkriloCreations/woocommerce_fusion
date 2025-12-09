@@ -877,7 +877,10 @@ def sync_template_variants(item_code: str, enqueue: bool = False):
 	clear_sync_hash(item_code)
 
 	# Sync template first
-	run_item_sync(item_code=item_code, enqueue=enqueue)
+	if enqueue:
+		frappe.enqueue(run_item_sync, item_code=item_code, enqueue=False)
+	else:
+		run_item_sync(item_code=item_code, enqueue=False)
 
 	# Get all variants
 	variants = frappe.get_all(
