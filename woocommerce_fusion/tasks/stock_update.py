@@ -14,7 +14,10 @@ def update_stock_levels_for_woocommerce_item(doc, method):
 			if (
 				len(
 					frappe.get_list(
-						"WooCommerce Server", filters={"enable_sync": 1, "enable_stock_level_synchronisation": 1}
+						"WooCommerce Server",
+						filters={"enable_sync": 1, "enable_stock_level_synchronisation": 1},
+						ignore_permissions=True,
+						limit_page_length=1,
 					)
 				)
 				> 0
@@ -81,7 +84,12 @@ def update_stock_levels_on_woocommerce_site(item_code):
 			if wc_site.woocommerce_id:
 				woocommerce_id = wc_site.woocommerce_id
 				woocommerce_server = wc_site.woocommerce_server
-				wc_server = frappe.get_cached_doc("WooCommerce Server", woocommerce_server)
+				previous_ignore = getattr(frappe.flags, "ignore_permissions", False)
+				frappe.flags.ignore_permissions = True
+				try:
+					wc_server = frappe.get_cached_doc("WooCommerce Server", woocommerce_server)
+				finally:
+					frappe.flags.ignore_permissions = previous_ignore
 
 				if (
 					not wc_server
