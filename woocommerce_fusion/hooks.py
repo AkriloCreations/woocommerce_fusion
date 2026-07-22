@@ -251,6 +251,7 @@ fixtures = [
 					"Address-woocommerce_identifier",
 					"Item-woocommerce_servers",
 					"Item-custom_woocommerce_tab",
+					"Item-custom_strict_variant_options",
 				),
 			]
 		],

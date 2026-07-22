@@ -23,6 +23,58 @@ from woocommerce_fusion.woocommerce.woocommerce_api import (
 )
 
 
+def get_template_attribute_options(template_code: str, attribute: str) -> list[str]:
+	"""
+	Return the attribute values actually used by a template's variants.
+
+	An `Item Attribute` holds every value ever defined across the whole catalog, so
+	reading options from it leaks unrelated products' values into a product's
+	dropdown. This scopes them to the variants that really exist.
+
+	Ordered by `Item Attribute Value.idx` so the storefront dropdown follows the
+	sequence defined in ERPNext. A value used by a variant but absent from the
+	Item Attribute is still included, sorted last - it is real, buyable stock.
+	"""
+	used = frappe.db.sql(
+		"""
+		SELECT DISTINCT iva.attribute_value
+		FROM `tabItem Variant Attribute` iva
+		JOIN `tabItem` i ON i.name = iva.parent
+		WHERE i.variant_of = %(template)s AND iva.attribute = %(attribute)s
+		""",
+		{"template": template_code, "attribute": attribute},
+		pluck=True,
+	)
+	if not used:
+		return []
+
+	order = {
+		row.attribute_value: row.idx
+		for row in frappe.get_all(
+			"Item Attribute Value",
+			filters={"parent": attribute},
+			fields=["attribute_value", "idx"],
+		)
+	}
+	# Unknown values sort last (idx None -> +inf), then alphabetically.
+	return sorted(used, key=lambda v: (order.get(v) is None, order.get(v) or 0, v))
+
+
+def get_wc_attribute_options(item: Item, attribute: str) -> list[str]:
+	"""
+	Resolve the options to send to WooCommerce for one attribute of a template.
+
+	Defaults to upstream behaviour (every value on the Item Attribute). When the
+	template opts in via `custom_strict_variant_options`, options are derived from
+	the variants that actually exist.
+	"""
+	if item.get("custom_strict_variant_options"):
+		return get_template_attribute_options(item.name, attribute)
+
+	item_attribute = frappe.get_doc("Item Attribute", attribute)
+	return [option.attribute_value for option in item_attribute.item_attribute_values]
+
+
 def run_item_sync_from_hook(doc, method):
 	"""
 	Intended to be triggered by a Document Controller hook from Item
@@ -327,16 +379,18 @@ class SynchroniseItem(SynchroniseWooCommerce):
 
 				# Handle attributes
 				for row in item.item.attributes:
-					item_attribute = frappe.get_doc("Item Attribute", row.attribute)
+					options = get_wc_attribute_options(item.item, row.attribute)
+					if not options:
+						# WooCommerce silently drops an attribute marked `variation: true`
+						# with empty options, so skip it rather than emit an invisible failure.
+						continue
 					wc_product_attributes.append(
 						{
 							"name": row.attribute,
 							"slug": row.attribute.lower().replace(" ", "_"),
 							"visible": True,
 							"variation": True,
-							"options": [
-								option.attribute_value for option in item_attribute.item_attribute_values
-							],
+							"options": options,
 						}
 					)
 
