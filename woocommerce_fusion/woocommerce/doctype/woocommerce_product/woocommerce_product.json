@@ -486,8 +486,7 @@
   {
    "fieldname": "regular_price",
    "fieldtype": "Float",
-   "label": "Regular Price",
-   "reqd": 1
+   "label": "Regular Price"
   }
  ],
  "grid_page_length": 50,
