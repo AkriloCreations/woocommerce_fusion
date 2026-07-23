@@ -103,7 +103,8 @@
    "fieldname": "slug",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Slug"
+   "label": "Slug",
+   "length": 500
   },
   {
    "fieldname": "permalink",
@@ -179,7 +180,8 @@
   {
    "fieldname": "sku",
    "fieldtype": "Data",
-   "label": "SKU"
+   "label": "SKU",
+   "length": 500
   },
   {
    "fieldname": "price",

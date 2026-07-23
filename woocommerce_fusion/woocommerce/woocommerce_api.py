@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import format_datetime, get_datetime
+from frappe.utils import format_datetime, get_datetime, now
 from typing_extensions import Self
 
 from woocommerce_fusion.exceptions import SyncDisabledError
@@ -432,6 +432,13 @@ class WooCommerceResource(Document):
 			record["woocommerce_date_created_gmt"] = record["date_created_gmt"]
 			record["woocommerce_date_modified"] = record["date_modified"]
 			record["woocommerce_date_modified_gmt"] = record["date_modified_gmt"]
+
+		# Frappe's `check_if_locked` reads `self.creation` on every save. A virtual
+		# DocType has no such column, so without this every save raises
+		# AttributeError - swallowed by callers' try/except, which is why writes
+		# appeared to succeed while nothing changed. Variations carry no
+		# `date_created` at all, hence the fallback.
+		record["creation"] = record.get("date_created") or record.get("date_modified") or now()
 
 		# Define woocommerce_server_url
 		server_domain = parse_domain_from_url(woocommerce_server_url)
