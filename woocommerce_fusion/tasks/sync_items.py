@@ -11,6 +11,7 @@ from jsonpath_ng.ext import parse
 
 from woocommerce_fusion.exceptions import SyncDisabledError
 from woocommerce_fusion.tasks.sync import SynchroniseWooCommerce
+from woocommerce_fusion.tasks.sync_categories import apply_category_to_product
 from woocommerce_fusion.tasks.sync_images import apply_image_to_product
 from woocommerce_fusion.tasks.sync_item_prices import _format_sale_date
 from woocommerce_fusion.woocommerce.doctype.woocommerce_product.woocommerce_product import (
@@ -632,6 +633,10 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			if not item.item.variant_of and apply_image_to_product(
 				woocommerce_product, item.item.image, wc_server
 			):
+				wc_product_dirty = True
+
+			# Item Group -> product category (opt-in, ERPNext -> Woo)
+			if apply_category_to_product(woocommerce_product, item.item, wc_server):
 				wc_product_dirty = True
 
 		return wc_product_dirty, woocommerce_product

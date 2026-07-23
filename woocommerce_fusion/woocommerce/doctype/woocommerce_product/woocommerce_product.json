@@ -394,8 +394,7 @@
   {
    "fieldname": "categories",
    "fieldtype": "JSON",
-   "label": "Categories",
-   "read_only": 1
+   "label": "Categories"
   },
   {
    "fieldname": "tags",

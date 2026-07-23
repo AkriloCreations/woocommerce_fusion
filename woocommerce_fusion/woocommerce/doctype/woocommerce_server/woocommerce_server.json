@@ -534,6 +534,13 @@
    "label": "Enable Image Push"
   },
   {
+   "default": "0",
+   "description": "Set the WooCommerce product category from the Item's Item Group (ERPNext → WooCommerce). Categories are created on first use. Groups equal to the Item Group setting above are skipped, being the catalog root rather than a category.",
+   "fieldname": "enable_category_sync",
+   "fieldtype": "Check",
+   "label": "Enable Category Sync"
+  },
+  {
    "depends_on": "eval:doc.enable_image_push",
    "description": "WordPress username that owns the Application Password (for media uploads).",
    "fieldname": "wp_username",
