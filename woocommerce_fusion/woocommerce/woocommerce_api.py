@@ -113,6 +113,16 @@ class WooCommerceResource(Document):
 		# Get WooCommerce Record
 		try:
 			record = self.current_wc_api.api.get(f"{self.resource}/{record_id}").json()
+			# A variation is not served at products/<id>; it lives under its parent at
+			# products/<parent_id>/variations/<id>. Resolve the parent and retry, so a
+			# variation can be loaded by id like any other record.
+			if "id" not in record and self.child_resource:
+				parent_id = self.get_parent_id_for_child(record_id, wc_server_domain)
+				if parent_id:
+					self.parent_id = parent_id
+					record = self.current_wc_api.api.get(
+						f"{self.resource}/{parent_id}/{self.child_resource}/{record_id}"
+					).json()
 		except Exception:
 			error_text = (
 				f"load_from_db failed (WooCommerce {self.resource} #{record_id})\n\n{frappe.get_traceback()}"
@@ -374,6 +384,30 @@ class WooCommerceResource(Document):
 
 		self.woocommerce_date_modified = response.json()["date_modified"]
 		self.after_db_update()
+
+	def get_parent_id_for_child(self, record_id: str, wc_server_domain: str) -> str | None:
+		"""
+		Find the WooCommerce id of the parent product for a variation.
+
+		ERPNext already knows the relationship - the variant's `variant_of` points at
+		its template - so the parent's WooCommerce id is one join away. This avoids
+		scanning the store for a product that owns the variation.
+		"""
+		child = frappe.db.get_value(
+			"Item WooCommerce Server",
+			{"woocommerce_id": str(record_id)},
+			["parent"],
+		)
+		if not child:
+			return None
+		template = frappe.db.get_value("Item", child, "variant_of")
+		if not template:
+			return None
+		return frappe.db.get_value(
+			"Item WooCommerce Server",
+			{"parent": template, "woocommerce_server": ["like", f"%{wc_server_domain}%"]},
+			"woocommerce_id",
+		)
 
 	@classmethod
 	def pre_init_document(cls, record: dict, woocommerce_server_url: str):
