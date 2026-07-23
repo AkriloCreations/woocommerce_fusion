@@ -318,13 +318,18 @@ class SynchroniseItem(SynchroniseWooCommerce):
 		Update the ERPNext Item with fields from it's corresponding WooCommerce Product
 		"""
 		item_dirty = False
-		if item.item.item_name != woocommerce_product.woocommerce_name:
+		wc_server = frappe.get_cached_doc("WooCommerce Server", woocommerce_product.woocommerce_server)
+
+		# Writing the name back is inbound (Woo -> ERPNext) and had no gate at all,
+		# unlike images. On an ERPNext-is-source-of-truth setup it overwrites the
+		# real name with whatever the store holds - including names WooCommerce has
+		# already truncated. Gated, and off by default.
+		if wc_server.get("enable_name_sync") and item.item.item_name != woocommerce_product.woocommerce_name:
 			item.item.item_name = woocommerce_product.woocommerce_name
 			item_dirty = True
 
 		fields_updated, item.item = self.set_item_fields(item=item.item)
 
-		wc_server = frappe.get_cached_doc("WooCommerce Server", woocommerce_product.woocommerce_server)
 		if wc_server.enable_image_sync:
 			wc_product_images = json.loads(woocommerce_product.images)
 			if len(wc_product_images) > 0:

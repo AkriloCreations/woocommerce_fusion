@@ -541,6 +541,13 @@
    "label": "Enable Category Sync"
   },
   {
+   "default": "0",
+   "description": "Overwrite the ERPNext Item's name with the WooCommerce product name (WooCommerce → ERPNext). Leave off when ERPNext is the source of truth - the store may hold a truncated or edited name.",
+   "fieldname": "enable_name_sync",
+   "fieldtype": "Check",
+   "label": "Enable Name Sync (inbound)"
+  },
+  {
    "depends_on": "eval:doc.enable_image_push",
    "description": "WordPress username that owns the Application Password (for media uploads).",
    "fieldname": "wp_username",
