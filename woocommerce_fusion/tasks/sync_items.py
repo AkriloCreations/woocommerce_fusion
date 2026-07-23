@@ -713,23 +713,27 @@ def get_list_of_wc_products(
 
 def get_item_price_rate(item: ERPNextItemToSync):
 	"""
-	Get the Item Price if Item Price sync is enabled
+	Get the price to send to WooCommerce.
+
+	`Item Price.item_code` holds the item's code, not its name - filtering by
+	`item_name` matched nothing and every product synced at 0.
+
+	Falls back to `Item.standard_rate`: many items here carry a price only there,
+	and a product published at 0 is worse than one priced from the legacy field.
 	"""
 	wc_server = frappe.get_cached_doc("WooCommerce Server", item.item_woocommerce_server.woocommerce_server)
-	if wc_server.enable_price_list_sync:
-		item_prices = frappe.get_all(
-			"Item Price",
-			filters={"item_code": item.item.item_name, "price_list": wc_server.price_list},
-			fields=["price_list_rate", "valid_upto"],
-		)
-		return next(
-			(
-				price.price_list_rate
-				for price in item_prices
-				if not price.valid_upto or price.valid_upto > now()
-			),
-			None,
-		)
+
+	item_prices = frappe.get_all(
+		"Item Price",
+		filters={"item_code": item.item.name, "price_list": wc_server.price_list or "Standard Selling"},
+		fields=["price_list_rate", "valid_upto", "valid_from"],
+		order_by="valid_from desc",
+	)
+	rate = next(
+		(price.price_list_rate for price in item_prices if not price.valid_upto or price.valid_upto > now()),
+		None,
+	)
+	return rate or item.item.standard_rate or None
 
 
 def get_item_sale_price_data(item: ERPNextItemToSync) -> frappe._dict | None:
@@ -750,7 +754,7 @@ def get_item_sale_price_data(item: ERPNextItemToSync) -> frappe._dict | None:
 
 	item_prices = frappe.get_all(
 		"Item Price",
-		filters={"item_code": item.item.item_name, "price_list": wc_server.sales_price_list},
+		filters={"item_code": item.item.name, "price_list": wc_server.sales_price_list},
 		fields=["price_list_rate", "valid_from", "valid_upto"],
 	)
 	return next(
