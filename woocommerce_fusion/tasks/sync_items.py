@@ -65,15 +65,14 @@ def get_wc_attribute_options(item: Item, attribute: str) -> list[str]:
 	"""
 	Resolve the options to send to WooCommerce for one attribute of a template.
 
-	Defaults to upstream behaviour (every value on the Item Attribute). When the
-	template opts in via `custom_strict_variant_options`, options are derived from
-	the variants that actually exist.
+	Always scoped to the template's real variants. An `Item Attribute` is global -
+	it accumulates every value ever used anywhere in the catalog - so sending it
+	verbatim puts unbuyable options from unrelated products in the dropdown
+	(measured here: 234 of 254 templates, one sending 289 sizes for 6 variants).
+	ERPNext stores no per-template value list, so existing variants are the only
+	truth about what is actually for sale.
 	"""
-	if item.get("custom_strict_variant_options"):
-		return get_template_attribute_options(item.name, attribute)
-
-	item_attribute = frappe.get_doc("Item Attribute", attribute)
-	return [option.attribute_value for option in item_attribute.item_attribute_values]
+	return get_template_attribute_options(item.name, attribute)
 
 
 def run_item_sync_from_hook(doc, method):
