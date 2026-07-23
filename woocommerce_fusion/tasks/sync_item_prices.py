@@ -111,6 +111,37 @@ class SynchroniseItemPrice(SynchroniseWooCommerce):
 				.where(Criterion.all(and_conditions))
 				.run(as_dict=True)
 			)
+			self.item_price_list += self._get_standard_rate_fallbacks(
+				{p.item_code for p in self.item_price_list}
+			)
+
+	def _get_standard_rate_fallbacks(self, already_priced: set) -> list:
+		"""
+		Items priced only via `Item.standard_rate`, which has no Item Price row.
+
+		Walking the Item Price table alone misses them entirely - 530 linked variants
+		here - and they would publish at 0. `standard_rate` is the legacy fallback
+		ERPNext itself honours, so it is honoured here too.
+		"""
+		rows = frappe.db.sql(
+			"""
+			SELECT i.name AS item_code, i.standard_rate AS price_list_rate,
+			       w.woocommerce_server, w.woocommerce_id
+			FROM `tabItem` i
+			JOIN `tabItem WooCommerce Server` w ON w.parent = i.name
+			WHERE w.woocommerce_server = %(server)s AND w.enabled = 1
+			  AND w.woocommerce_id IS NOT NULL AND w.woocommerce_id != ''
+			  AND i.disabled = 0 AND IFNULL(i.standard_rate, 0) != 0
+			""",
+			{"server": self.wc_server.name},
+			as_dict=True,
+		)
+		out = [r for r in rows if r.item_code not in already_priced]
+		if self.item_code:
+			out = [r for r in out if r.item_code == self.item_code]
+		for r in out:
+			r.name = None  # no Item Price document backs these
+		return out
 
 	def get_erpnext_sale_prices(self) -> None:
 		"""
