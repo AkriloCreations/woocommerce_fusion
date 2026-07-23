@@ -96,6 +96,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Product Name",
+   "length": 500,
    "reqd": 1
   },
   {
@@ -481,7 +482,8 @@
    "fieldname": "title",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Title"
+   "label": "Title",
+   "length": 500
   },
   {
    "fieldname": "regular_price",
