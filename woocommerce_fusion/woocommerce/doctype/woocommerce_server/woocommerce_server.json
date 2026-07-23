@@ -527,6 +527,27 @@
    "label": "Enable Image Sync"
   },
   {
+   "default": "0",
+   "description": "Push the ERPNext Item's image to WooCommerce as a Media Library attachment (ERPNext → WooCommerce). Distinct from Enable Image Sync, which is inbound only. Requires the WordPress Application Password fields below - the WooCommerce consumer key does not authenticate the wp/v2/media endpoint.",
+   "fieldname": "enable_image_push",
+   "fieldtype": "Check",
+   "label": "Enable Image Push"
+  },
+  {
+   "depends_on": "eval:doc.enable_image_push",
+   "description": "WordPress username that owns the Application Password (for media uploads).",
+   "fieldname": "wp_username",
+   "fieldtype": "Data",
+   "label": "WordPress Username"
+  },
+  {
+   "depends_on": "eval:doc.enable_image_push",
+   "description": "WordPress Application Password (Users → Profile → Application Passwords). Used only for wp/v2/media uploads.",
+   "fieldname": "wp_application_password",
+   "fieldtype": "Password",
+   "label": "WordPress Application Password"
+  },
+  {
    "fieldname": "customers_sync_section",
    "fieldtype": "Section Break",
    "label": "Customers Sync"

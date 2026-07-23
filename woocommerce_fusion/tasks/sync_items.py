@@ -11,6 +11,7 @@ from jsonpath_ng.ext import parse
 
 from woocommerce_fusion.exceptions import SyncDisabledError
 from woocommerce_fusion.tasks.sync import SynchroniseWooCommerce
+from woocommerce_fusion.tasks.sync_images import apply_image_to_product
 from woocommerce_fusion.tasks.sync_item_prices import _format_sale_date
 from woocommerce_fusion.woocommerce.doctype.woocommerce_product.woocommerce_product import (
 	WooCommerceProduct,
@@ -626,6 +627,13 @@ class SynchroniseItem(SynchroniseWooCommerce):
 					woocommerce_product = woocommerce_product.serialize_attributes_of_type_dict_or_list(
 						wc_product_with_deserialised_fields
 					)
+
+			# Push the ERPNext Item image to WooCommerce (opt-in, ERPNext -> Woo).
+			# Only for the main product, not per-variation - variant images are out of scope.
+			if not item.item.variant_of and apply_image_to_product(
+				woocommerce_product, item.item.image, wc_server
+			):
+				wc_product_dirty = True
 
 		return wc_product_dirty, woocommerce_product
 
