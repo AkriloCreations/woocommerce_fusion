@@ -644,6 +644,14 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			if apply_category_to_product(woocommerce_product, item.item, wc_server):
 				wc_product_dirty = True
 
+			# ERPNext Item description -> WooCommerce product description (ERPNext -> Woo).
+			# Main product only; deskripsi kaya sudah ada di ERPNext Item.description.
+			if not item.item.variant_of:
+				erp_desc = item.item.description or ""
+				if (woocommerce_product.description or "") != erp_desc:
+					woocommerce_product.description = erp_desc
+					wc_product_dirty = True
+
 		return wc_product_dirty, woocommerce_product
 
 	def set_sync_hash(self):
