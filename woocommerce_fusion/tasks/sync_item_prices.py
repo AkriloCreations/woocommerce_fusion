@@ -1,3 +1,4 @@
+from math import ceil
 from time import sleep
 
 import frappe
@@ -212,6 +213,9 @@ class SynchroniseItemPrice(SynchroniseWooCommerce):
 					if self.item_price_doc and self.item_price_doc.price_list == self.wc_server.price_list
 					else item_price.price_list_rate
 				)
+				# Round up to the nearest Rp1,000 -- ERPNext rates can carry odd change
+				# (currency conversion, margin math) that looks broken to a storefront customer.
+				price_list_rate = ceil(price_list_rate / 1000) * 1000
 				if not wc_product.regular_price:
 					wc_product.regular_price = 0
 				wc_product_regular_price = (
@@ -255,6 +259,8 @@ class SynchroniseItemPrice(SynchroniseWooCommerce):
 				new_sale_price = float(sale_price_record.price_list_rate or 0)
 				new_valid_from = sale_price_record.valid_from
 				new_valid_upto = sale_price_record.valid_upto
+			if new_sale_price > 0:
+				new_sale_price = ceil(new_sale_price / 1000) * 1000
 		else:
 			new_sale_price = 0
 			new_valid_from = None

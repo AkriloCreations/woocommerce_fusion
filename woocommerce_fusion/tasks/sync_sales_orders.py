@@ -202,8 +202,11 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 			# create missing order in WooCommerce
 			pass
 		elif self.woocommerce_order and not self.sales_order:
-			# create missing order in ERPNext
-			self.create_sales_order(self.woocommerce_order)
+			# Only create the Sales Order once the WooCommerce order is actually paid --
+			# an unpaid order (e.g. a DOKU checkout the customer never completed) should
+			# leave no trace in ERPNext until payment is confirmed.
+			if self.woocommerce_order.date_paid:
+				self.create_sales_order(self.woocommerce_order)
 		elif self.sales_order and self.woocommerce_order:
 			# both exist, check sync hash
 			if (
@@ -228,6 +231,36 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 				self.sales_order.reload()
 				if self.create_and_link_payment_entry(self.woocommerce_order, self.sales_order):
 					self.sales_order.save()
+
+			# Once the order is paid, invoice it -- a WooCommerce sale has no separate
+			# fulfilment gate like the marketplace bridges (no DN/escrow to wait on),
+			# so payment confirmation alone is enough to invoice.
+			if (
+				self.sales_order.docstatus == 1
+				and self.woocommerce_order.date_paid
+				and not frappe.db.exists(
+					"Sales Invoice Item", {"sales_order": self.sales_order.name, "docstatus": ["!=", 2]}
+				)
+			):
+				self.create_sales_invoice(self.sales_order)
+
+	def create_sales_invoice(self, sales_order: SalesOrder) -> None:
+		"""
+		Create and submit a Sales Invoice from a paid WooCommerce Sales Order.
+		Uses ERPNext's standard mapper so shipping/fee rows already present on the
+		Sales Order (see set_fee_lines_in_sales_order) carry over to the invoice.
+		"""
+		from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
+
+		try:
+			si = make_sales_invoice(sales_order.name)
+			si.insert(ignore_permissions=True)
+			si.submit()
+		except Exception:
+			frappe.log_error(
+				"WooCommerce Error: Sales Invoice Creation",
+				f"{frappe.get_traceback()}\n\nSales Order: {sales_order.name}",
+			)
 
 	def update_sales_order(self, woocommerce_order: WooCommerceOrder, sales_order: SalesOrder):
 		"""
@@ -488,7 +521,9 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 		new_sales_order = frappe.new_doc("Sales Order")
 		self.sales_order = new_sales_order
 		new_sales_order.customer = customer_docname
-		new_sales_order.po_no = new_sales_order.woocommerce_id = wc_order.id
+		new_sales_order.woocommerce_id = wc_order.id
+		order_date = wc_order.date_created.split("T")[0].replace("-", "")
+		new_sales_order.po_no = f"{order_date}-{wc_order.id}"
 		new_sales_order.custom_woocommerce_customer_note = wc_order.customer_note
 
 		new_sales_order.woocommerce_status = WC_ORDER_STATUS_MAPPING_REVERSE[wc_order.status]
