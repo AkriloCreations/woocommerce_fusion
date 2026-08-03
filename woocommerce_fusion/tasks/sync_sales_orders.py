@@ -544,9 +544,15 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 		new_sales_order.company = wc_server.company
 		new_sales_order.currency = wc_order.currency
 
+		shipping_lines = json.loads(wc_order.shipping_lines)
+		if shipping_lines:
+			# Same field shopee_bridge/tiktok_bridge use for their courier name, so
+			# reporting doesn't need a separate WooCommerce-only column.
+			new_sales_order.custom_shipping_carrier = shipping_lines[0]["method_title"]
+
 		if (
 			(wc_server.enable_shipping_methods_sync)
-			and (shipping_lines := json.loads(wc_order.shipping_lines))
+			and shipping_lines
 			and len(wc_server.shipping_rule_map) > 0
 		):
 			if len(wc_order.shipping_lines) > 0:
