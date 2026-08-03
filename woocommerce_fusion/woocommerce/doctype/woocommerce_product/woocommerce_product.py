@@ -110,21 +110,25 @@ class WooCommerceProduct(WooCommerceResource):
 		return WooCommerceProduct.get_count_of_records(args)
 
 	def before_db_insert(self, product: dict):
-		return self.clean_up_product_before_write(product)
+		return self.clean_up_product_before_write(product, is_new=True)
 
 	def before_db_update(self, product: dict):
-		return self.clean_up_product_before_write(product)
+		return self.clean_up_product_before_write(product, is_new=False)
 
 	def after_db_update(self):
 		pass
 
 	@staticmethod
-	def clean_up_product_before_write(product: dict) -> dict:
+	def clean_up_product_before_write(product: dict, is_new: bool) -> dict:
 		"""
 		Perform some tasks to make sure that a product is in the correct format for the WC API
 		"""
 
-		if product.get("type") == "variation" or product.get("parent_id"):
+		# A newly created variation must be status=publish to be visible in WooCommerce at all
+		# (see Starktail/woocommerce_fusion#128) -- but only on insert. Forcing this on every
+		# update as well would silently re-publish a variation/product an operator had
+		# deliberately set back to draft.
+		if is_new and product.get("type") == "variation":
 			product["status"] = "publish"
 
 		# Convert numeric fields back to strings required by WC API

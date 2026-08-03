@@ -214,6 +214,27 @@ class SynchroniseItem(SynchroniseWooCommerce):
 		"""
 		Run synchronisation
 		"""
+		# Serialize per item/product: the Item on_update/after_insert hook and the hourly
+		# sync_woocommerce_products_modified_since scheduler both funnel through here via
+		# frappe.enqueue with no other mutual exclusion, so an edit and a scheduled sync
+		# landing on the same item at the same time would otherwise race and clobber
+		# each other's writes.
+		from frappe.utils.synchronization import filelock
+
+		lock_key = self._get_lock_key()
+		with filelock(f"woocommerce_fusion_sync_item_{lock_key}", timeout=120):
+			self._run()
+
+	def _get_lock_key(self) -> str:
+		if self.item:
+			return self.item.item.name
+		if self.woocommerce_product:
+			wc_id = getattr(self.woocommerce_product, "woocommerce_id", None)
+			server = getattr(self.woocommerce_product, "woocommerce_server", None)
+			return f"{server}_{wc_id}"
+		return "unknown"
+
+	def _run(self):
 		try:
 			self.get_corresponding_item_or_product()
 			self.sync_wc_product_with_erpnext_item()
