@@ -329,6 +329,9 @@ class WooCommerceResource(Document):
 			log_and_raise_error(error_text="db_insert failed", response=response)
 		self.woocommerce_id = response.json()["id"]
 		self.woocommerce_date_modified = response.json()["date_modified"]
+		# Keep the _gmt counterpart in sync too -- sync_items.py's direction comparison
+		# reads this field (not the site-local one) to avoid a timezone-offset bug.
+		self.woocommerce_date_modified_gmt = response.json()["date_modified_gmt"]
 
 	def before_db_insert(self, record: dict):
 		return record
@@ -383,6 +386,9 @@ class WooCommerceResource(Document):
 			log_and_raise_error(error_text="db_update failed", response=response)
 
 		self.woocommerce_date_modified = response.json()["date_modified"]
+		# Keep the _gmt counterpart in sync too -- sync_items.py's direction comparison
+		# reads this field (not the site-local one) to avoid a timezone-offset bug.
+		self.woocommerce_date_modified_gmt = response.json()["date_modified_gmt"]
 		self.after_db_update()
 
 	def get_parent_id_for_child(self, record_id: str, wc_server_domain: str) -> str | None:

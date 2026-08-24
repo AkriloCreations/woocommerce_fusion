@@ -321,15 +321,22 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			self.create_item(self.woocommerce_product)
 		elif self.item and self.woocommerce_product:
 			# both exist, check sync hash
+			# Compare woocommerce_date_modified_gmt (true UTC), not woocommerce_date_modified
+			# (site-local time, e.g. WIB/UTC+7 for akrilocreations.com) -- the non-GMT field
+			# compared directly against ERPNext's item.modified (always UTC) made WooCommerce
+			# look permanently ~7h newer than reality, so this comparison almost always picked
+			# update_item (Woo->ERP) and starved update_woocommerce_product (ERP->Woo, where the
+			# image-gallery push lives) of ever running. Root-caused via ERPNext Error Log 401s
+			# on wp/v2/media that turned out to be a red herring for the deeper direction bug.
 			if (
-				self.woocommerce_product.woocommerce_date_modified
+				self.woocommerce_product.woocommerce_date_modified_gmt
 				!= self.item.item_woocommerce_server.woocommerce_last_sync_hash
 			):
-				if get_datetime(self.woocommerce_product.woocommerce_date_modified) > get_datetime(
+				if get_datetime(self.woocommerce_product.woocommerce_date_modified_gmt) > get_datetime(
 					self.item.item.modified
 				):
 					self.update_item(self.woocommerce_product, self.item)
-				if get_datetime(self.woocommerce_product.woocommerce_date_modified) < get_datetime(
+				if get_datetime(self.woocommerce_product.woocommerce_date_modified_gmt) < get_datetime(
 					self.item.item.modified
 				):
 					self.update_woocommerce_product(self.woocommerce_product, self.item)
@@ -654,10 +661,10 @@ class SynchroniseItem(SynchroniseWooCommerce):
 						wc_product_with_deserialised_fields
 					)
 
-			# Push the ERPNext Item image to WooCommerce (opt-in, ERPNext -> Woo).
+			# Push the ERPNext Item's full image gallery to WooCommerce (opt-in, ERPNext -> Woo).
 			# Only for the main product, not per-variation - variant images are out of scope.
 			if not item.item.variant_of and apply_image_to_product(
-				woocommerce_product, item.item.image, wc_server
+				woocommerce_product, item.item, wc_server
 			):
 				wc_product_dirty = True
 
@@ -684,7 +691,7 @@ class SynchroniseItem(SynchroniseWooCommerce):
 			"Item WooCommerce Server",
 			self.item.item_woocommerce_server.name,
 			"woocommerce_last_sync_hash",
-			self.woocommerce_product.woocommerce_date_modified,
+			self.woocommerce_product.woocommerce_date_modified_gmt,
 			update_modified=False,
 		)
 
