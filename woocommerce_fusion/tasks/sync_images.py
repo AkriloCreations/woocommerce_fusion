@@ -129,23 +129,53 @@ def resolve_attachment(source_url: str, wc_server) -> str | None:
 		return None
 
 
-def apply_image_to_product(wc_product, item_image: str, wc_server) -> bool:
-	"""Set the product's first image to the ERPNext Item image, by attachment id.
-	Returns True if the product's images changed. No-op if already set to this id."""
-	if not wc_server.get("enable_image_push") or not item_image:
+def get_item_image_urls(item) -> list[str]:
+	"""All image URLs for an ERPNext Item, main image first: the single `image`
+	field plus every `File` attached to it (shopee_bridge saves the full Shopee
+	gallery this way - see _attach_multiple_image_files), deduplicated in order."""
+	urls = [item.image] if item.image else []
+	attached = frappe.get_all(
+		"File",
+		filters={"attached_to_doctype": item.doctype, "attached_to_name": item.name},
+		fields=["file_url"],
+		order_by="creation asc",
+	)
+	for row in attached:
+		if row.file_url and row.file_url not in urls:
+			urls.append(row.file_url)
+	return urls
+
+
+def apply_image_to_product(wc_product, item, wc_server) -> bool:
+	"""Set the product's images to the ERPNext Item's full gallery (main `image`
+	field + attached Shopee photos), by attachment id, main image first.
+	Returns True if the product's images changed."""
+	if not wc_server.get("enable_image_push"):
 		return False
 
-	attachment_id = resolve_attachment(item_image, wc_server)
-	if not attachment_id:
+	image_urls = get_item_image_urls(item)
+	if not image_urls:
+		return False
+
+	attachment_ids = [resolve_attachment(url, wc_server) for url in image_urls]
+	attachment_ids = [a for a in attachment_ids if a]
+	if not attachment_ids:
 		return False
 
 	try:
 		current = json.loads(wc_product.images) if wc_product.images else []
 	except (ValueError, TypeError):
 		current = []
+	# `images` is a Frappe JSON-type field: an unset value on a freshly-created
+	# WooCommerceProduct doc is normalised to the *string* "null" (json.dumps(None)),
+	# not Python None or "" -- json.loads("null") parses cleanly to None, which then
+	# blows up the list comprehension below. Treat a non-list parse as empty.
+	if not isinstance(current, list):
+		current = []
 
-	if current and str(current[0].get("id")) == str(attachment_id):
+	current_ids = [str(c.get("id")) for c in current]
+	if current_ids == [str(a) for a in attachment_ids]:
 		return False
 
-	wc_product.images = json.dumps([{"id": int(attachment_id)}])
+	wc_product.images = json.dumps([{"id": int(a)} for a in attachment_ids])
 	return True
