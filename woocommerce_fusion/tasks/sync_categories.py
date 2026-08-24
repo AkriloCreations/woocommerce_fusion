@@ -81,6 +81,12 @@ def apply_category_to_product(wc_product, item, wc_server) -> bool:
 		current = json.loads(wc_product.categories) if wc_product.categories else []
 	except (ValueError, TypeError):
 		current = []
+	# `categories` is a Frappe JSON-type field: an unset value on a freshly-created
+	# WooCommerceProduct doc is normalised to the *string* "null" (json.dumps(None)),
+	# not Python None or "" -- json.loads("null") parses cleanly to None, which then
+	# breaks the `any(...)` iteration below. Same root cause as sync_images.py.
+	if not isinstance(current, list):
+		current = []
 
 	if any(c.get("id") == category_id for c in current):
 		return False
