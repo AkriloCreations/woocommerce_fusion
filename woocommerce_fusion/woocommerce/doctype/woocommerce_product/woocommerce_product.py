@@ -118,6 +118,14 @@ class WooCommerceProduct(WooCommerceResource):
 	def after_db_update(self):
 		pass
 
+	def validate(self):
+		# WooCommerce variations have no catalog_visibility at all, but the field is
+		# mandatory on this DocType, so every save of a variation (ERPNext -> Woo update)
+		# failed with MandatoryError. Satisfy the check here; it is stripped from the
+		# payload again in clean_up_product_before_write.
+		if self.type == "variation" and not self.catalog_visibility:
+			self.catalog_visibility = "visible"
+
 	@staticmethod
 	def clean_up_product_before_write(product: dict, is_new: bool) -> dict:
 		"""
@@ -130,6 +138,10 @@ class WooCommerceProduct(WooCommerceResource):
 		# deliberately set back to draft.
 		if is_new and product.get("type") == "variation":
 			product["status"] = "publish"
+
+		# Only set in validate() to pass the mandatory check; variations don't have it.
+		if product.get("type") == "variation":
+			product.pop("catalog_visibility", None)
 
 		# Convert numeric fields back to strings required by WC API
 		product["weight"] = str(product["weight"])

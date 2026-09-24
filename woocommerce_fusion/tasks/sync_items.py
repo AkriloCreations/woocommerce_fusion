@@ -749,6 +749,28 @@ def get_list_of_wc_products(
 		if len(new_results) < page_length:
 			new_results = []
 
+	# products?include=<id> never returns variations, so a variant Item mapped to a
+	# variation ID was always "not found". Query its template's variations endpoint.
+	if item and not wc_products and item.item.variant_of:
+		parent_wc_id = frappe.db.get_value(
+			"Item WooCommerce Server",
+			{
+				"parent": item.item.variant_of,
+				"woocommerce_server": item.item_woocommerce_server.woocommerce_server,
+			},
+			"woocommerce_id",
+		)
+		if parent_wc_id:
+			wc_products = WooCommerceProduct.get_list_of_records(
+				{
+					"filters": filters,
+					"endpoint": f"products/{parent_wc_id}/variations",
+					"metadata": {},
+					"servers": servers,
+					"as_doc": True,
+				}
+			)
+
 	return wc_products
 
 
