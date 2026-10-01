@@ -521,6 +521,8 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 		new_sales_order = frappe.new_doc("Sales Order")
 		self.sales_order = new_sales_order
 		new_sales_order.customer = customer_docname
+		# new_doc pre-fills the global "All Customer Groups"; set_missing_values never overrides it
+		new_sales_order.customer_group = frappe.db.get_value("Customer", customer_docname, "customer_group")
 		new_sales_order.woocommerce_id = wc_order.id
 		order_date = wc_order.date_created.split("T")[0].replace("-", "")
 		new_sales_order.po_no = f"{order_date}-{wc_order.id}"
@@ -634,6 +636,8 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 				customer.customer_type = "Individual"
 
 			customer.woocommerce_is_guest = is_guest
+			# new_doc pre-fills the global default "All Customer Groups" (a group), which Customer rejects
+			customer.customer_group = "Website Customer"
 		else:
 			# Edit Customer
 			customer = frappe.get_doc("Customer", existing_customer)

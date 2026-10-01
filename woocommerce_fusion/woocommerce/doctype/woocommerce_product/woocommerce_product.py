@@ -119,6 +119,7 @@ class WooCommerceProduct(WooCommerceResource):
 		pass
 
 	def validate(self):
+		super().validate()  # re-serializes JSON fields; skipping it fails every save with "cannot be a list"
 		# WooCommerce variations have no catalog_visibility at all, but the field is
 		# mandatory on this DocType, so every save of a variation (ERPNext -> Woo update)
 		# failed with MandatoryError. Satisfy the check here; it is stripped from the
