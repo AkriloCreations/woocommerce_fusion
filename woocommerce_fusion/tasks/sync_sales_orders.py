@@ -254,6 +254,9 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 
 		try:
 			si = make_sales_invoice(sales_order.name)
+			# The gateway settlement is booked as an advance on the Sales Order when the BCA
+			# statement is input; apply it so the invoice comes out Paid instead of Unpaid.
+			si.allocate_advances_automatically = 1
 			si.insert(ignore_permissions=True)
 			si.submit()
 		except Exception:
