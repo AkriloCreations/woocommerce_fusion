@@ -1108,6 +1108,21 @@ def find_existing_contact(email, phone):
 	return None
 
 
+def fit_contact_name(first_name, last_name, customer_name, limit=140):
+	"""Trim a contact's names so Contact.name fits its column.
+
+	Contact.name is "<first> <last>-<customer>", and buyers sometimes type a whole
+	address into the name field, which made the insert fail and the order never sync.
+	"""
+	first_name = (first_name or "").strip()
+	last_name = (last_name or "").strip()
+	# 5 = the "-" separator plus room for the "-N" suffix added on a name clash
+	room = max(limit - len(customer_name or "") - 5, 1)
+	first_name = first_name[:room].strip()
+	last_name = last_name[: max(room - len(first_name) - 1, 0)].strip()
+	return first_name or None, last_name or None
+
+
 def create_contact(data, customer):
 	email = data.get("email", None)
 	phone = data.get("phone", None)
@@ -1116,8 +1131,9 @@ def create_contact(data, customer):
 		return
 
 	contact = frappe.new_doc("Contact")
-	contact.first_name = data.get("first_name")
-	contact.last_name = data.get("last_name")
+	contact.first_name, contact.last_name = fit_contact_name(
+		data.get("first_name"), data.get("last_name"), customer.name
+	)
 	contact.is_primary_contact = 1
 	contact.is_billing_contact = 1
 
