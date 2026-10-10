@@ -6,7 +6,7 @@ from erpnext.selling.doctype.sales_order.sales_order import SalesOrder
 from erpnext.selling.doctype.sales_order_item.sales_order_item import SalesOrderItem
 from frappe import _
 from frappe.utils import get_datetime
-from frappe.utils.data import cstr, now
+from frappe.utils.data import add_to_date, cstr, now
 from jsonpath_ng.ext import parse
 
 from woocommerce_fusion.exceptions import (
@@ -107,6 +107,7 @@ def sync_woocommerce_orders_modified_since(date_time_from=None):
 
 	wc_orders = get_list_of_wc_orders(date_time_from=date_time_from)
 	wc_orders += get_list_of_wc_orders(date_time_from=date_time_from, status="trash")
+	wc_orders += missed_paid_orders(wc_orders)
 	for wc_order in wc_orders:
 		try:
 			run_sales_order_sync(woocommerce_order=wc_order, enqueue=True)
@@ -115,6 +116,21 @@ def sync_woocommerce_orders_modified_since(date_time_from=None):
 			pass
 
 	frappe.db.set_single_value("WooCommerce Integration Settings", "wc_last_sync_date", now())
+
+
+RETRY_DAYS = 7
+
+
+def missed_paid_orders(already: list) -> list:
+	"""Paid orders of the last week that still have no Sales Order. The date above moves on even
+	when an order's sync job fails, so without this a failed order is never tried again
+	(order 27373, 8 Oct 2026: 21 hours late, found by hand)."""
+	seen = {str(o.id) for o in already}
+	recent = get_list_of_wc_orders(date_time_from=add_to_date(now(), days=-RETRY_DAYS), status="processing")
+	ids = [str(o.id) for o in recent if str(o.id) not in seen]
+	have = set(frappe.get_all("Sales Order", filters={"woocommerce_id": ["in", ids or [""]], "docstatus": ["<", 2]},
+		pluck="woocommerce_id"))
+	return [o for o in recent if str(o.id) in ids and str(o.id) not in {str(h) for h in have}]
 
 
 class SynchroniseSalesOrder(SynchroniseWooCommerce):
