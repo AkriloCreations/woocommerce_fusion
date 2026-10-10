@@ -144,8 +144,13 @@ scheduler_events = {
 	# 	"weekly": [
 	# 		"woocommerce_fusion.tasks.daily"
 	# 	],
+	# web orders every 15 minutes (owner, 10 Oct 2026): a paid order must reach production quickly
+	"cron": {
+		"*/15 * * * *": [
+			"woocommerce_fusion.tasks.sync_sales_orders.sync_woocommerce_orders_modified_since",
+		],
+	},
 	"hourly_long": [
-		"woocommerce_fusion.tasks.sync_sales_orders.sync_woocommerce_orders_modified_since",
 		"woocommerce_fusion.tasks.sync_items.sync_woocommerce_products_modified_since",
 	],
 	"daily_long": [
